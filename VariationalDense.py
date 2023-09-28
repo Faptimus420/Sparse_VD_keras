@@ -1,6 +1,5 @@
-from keras_core import activations, initializers, regularizers, ops
+from keras_core import activations, initializers, regularizers, ops, random
 from keras_core.layers import Layer
-from keras_core.backend.tensorflow.random import normal
 
 class VariationalDense(Layer):
     def __init__(self, output_dim, use_bias=True, threshold=3.0, activation=None, kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None):
@@ -61,7 +60,7 @@ class VariationalDense(Layer):
         if not sparse:
             theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
             sigma = ops.sqrt(ops.exp(self.log_alpha) * theta * theta)
-            self.weight = theta + normal(ops.shape(theta), 0.0, 1.0) * sigma    # Not sure if this line is backend-agnostic or TF-only - not yet implemented in the Keras Core ops API
+            self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0) * sigma
             output = ops.matmul(input, self.weight)
             if self.use_bias == True:
                 output += self.bias
