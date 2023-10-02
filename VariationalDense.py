@@ -15,14 +15,14 @@ class VariationalDense(Layer):
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
 
     def build(self, input_shape):
-        self.theta = self.add_weight("kernel", shape=(int(input_shape[-1]), self.output_dim),
+        self.theta = self.add_weight(name="kernel", shape=(int(input_shape[-1]), self.output_dim),
                                      initializer=self.kernel_initializer, trainable=True, regularizer=self.kernel_regularizer)
 
-        self.log_sigma2 = self.add_weight("log_sigma2", shape=(int(input_shape[-1]), self.output_dim),
+        self.log_sigma2 = self.add_weight(name="log_sigma2", shape=(int(input_shape[-1]), self.output_dim),
                                  initializer=initializers.Constant(-10.0), trainable=True)
 
         if self.use_bias == True:
-            self.bias = self.add_weight("bias", shape=(self.output_dim,),
+            self.bias = self.add_weight(name="bias", shape=(self.output_dim,),
                                         initializer=self.bias_initializer, trainable=True)
 
     def sparsity(self):
@@ -54,10 +54,10 @@ class VariationalDense(Layer):
         C = -k1
         mdkl = k1 * ops.sigmoid(k2 + k3 * self.log_alpha) - 0.5 * ops.log(1 + (ops.exp(-self.log_alpha))) + C
 
-        return -tf.sum(mdkl)
+        return -ops.sum(mdkl)
 
-    def call(self, input, sparse=False):
-        if not sparse:
+    def call(self, input, **kwargs):
+        if not kwargs['sparse']:
             theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
             sigma = ops.sqrt(ops.exp(self.log_alpha) * theta * theta)
             self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0) * sigma
@@ -67,8 +67,6 @@ class VariationalDense(Layer):
             if self.activation is not None:
                 output = self.activation(output)
 
-            return output
-
         else:
             output = ops.matmul(input, self.sparse_theta)
             if self.use_bias == True:
@@ -76,30 +74,32 @@ class VariationalDense(Layer):
             if self.activation is not None:
                 output = self.activation(output)
 
-            return output
+        return output
 
     def get_config(self):
         base_config = super().get_config()
-        config = {
-            "output_dim": self.output_dim,
-            "activation": activations.serialize(self.activation),
-            "use_bias": self.use_bias,
-            "threshold": self.threshold,
-            "kernel_initializer": initializers.serialize(
-                self.kernel_initializer
-            ),
-            "bias_initializer": initializers.serialize(self.bias_initializer),
-            "kernel_regularizer": regularizers.serialize(
-                self.kernel_regularizer
-            ),
-        }
+        config.update(
+            {
+                "output_dim": self.output_dim,
+                "activation": activations.serialize(self.activation),
+                "use_bias": self.use_bias,
+                "threshold": self.threshold,
+                "kernel_initializer": initializers.serialize(
+                    self.kernel_initializer
+                ),
+                "bias_initializer": initializers.serialize(self.bias_initializer),
+                "kernel_regularizer": regularizers.serialize(
+                    self.kernel_regularizer
+                ),
+            }
+        )
         return {**base_config, **config}
 
 
 
 if __name__ == '__main__':
     a = VariationalDense(10)
-    print(a(ops.zeros((1, 1)), sparse=True))
+    print(a(model(ops.zeros((1, 1)), sparse=True)))
     print(a.regularization)
 
 

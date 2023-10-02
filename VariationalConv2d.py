@@ -10,10 +10,7 @@ class VariationalConv2d(Layer):
         self.padding = padding
         self.threshold = threshold
         self.activation = activations.get(activation)
-        if data_format == 'channels_first':
-            self.data_format = 'NCHW'
-        else:
-            self.data_format = 'NHWC'
+        self.data_format = data_format
 
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.bias_initializer = initializers.get(bias_initializer)
@@ -21,10 +18,10 @@ class VariationalConv2d(Layer):
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
 
     def build(self, input_shape):
-        self.theta = self.add_weight("kernel", shape=self.kernel_size,
+        self.theta = self.add_weight(name="kernel", shape=self.kernel_size,
                                      initializer=self.kernel_initializer, trainable=True, regularizer=self.kernel_regularizer)
 
-        self.log_sigma2 = self.add_weight("log_sigma2", shape=self.kernel_size,
+        self.log_sigma2 = self.add_weight(name="log_sigma2", shape=self.kernel_size,
                                  initializer=initializers.Constant(-10.0), trainable=True)
 
     def sparsity(self):
@@ -58,10 +55,10 @@ class VariationalConv2d(Layer):
         return -ops.sum(mdkl)
 
 
-    def call(self, input, sparse=False):
+    def call(self, input, **kwargs):
         theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
 
-        if not sparse:
+        if not kwargs['sparse']:
             sigma = ops.sqrt(ops.exp(self.log_alpha) * theta * theta)
             self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0) * sigma
             output = ops.conv(input, self.weight, self.stride, self.padding, self.data_format)
@@ -69,14 +66,12 @@ class VariationalConv2d(Layer):
             if self.activation is not None:
                 output = self.activation(output)
 
-            return output
-
         else:
             output = ops.conv(input, self.sparse_theta, self.stride, self.padding, self.data_format)
             if self.activation is not None:
                 output = self.activation(output)
 
-            return output
+        return output
 
 
     def get_config(self):

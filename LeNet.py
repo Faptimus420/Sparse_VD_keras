@@ -34,35 +34,35 @@ class VariationalLeNet(Model):
         self.fc2 = VariationalDense(84)
         self.fc3 = VariationalDense(10)
 
-        self.hidden_layer = [self.conv1, self.conv2, self.fc1, self.fc2, self.fc3]
+        self.hidden_layers = [self.conv1, self.conv2, self.fc1, self.fc2, self.fc3]
 
-    def call(self, x, sparse=False):
-        x = self.conv1(x, sparse)
+    def call(self, input, **kwargs):
+        x = self.conv1(input, sparse=kwargs['sparse'])
         x = ops.relu(x)
         x = self.pooling1(x)
-        x = self.conv2(x, sparse)
+        x = self.conv2(x, sparse=kwargs['sparse'])
         x = ops.relu(x)
         x = self.pooling2(x)
         x = self.flat(x)
-        x = self.fc1(x, sparse)
+        x = self.fc1(x, sparse=kwargs['sparse'])
         x = ops.relu(x)
-        x = self.fc2(x, sparse)
+        x = self.fc2(x, sparse=kwargs['sparse'])
         x = ops.relu(x)
-        x = self.fc3(x, sparse)
-        x = ops.softmax(x)
+        x = self.fc3(x, sparse=kwargs['sparse'])
+        outputs = ops.softmax(x)
 
-        return x
+        return outputs
 
     def regularization(self):
         total_reg = 0
-        for layer in self.hidden_layer:
+        for layer in self.hidden_layers:
             total_reg += layer.regularization
 
         return total_reg
 
     def count_sparsity(self):
         total_remain, total_param = 0, 0
-        for layer in self.hidden_layer:
+        for layer in self.hidden_layers:
             a, b = layer.sparsity()
             total_remain += a
             total_param += b
@@ -103,6 +103,8 @@ if __name__ == '__main__':
     test_acc = metrics.CategoricalAccuracy()
 
     if os.environ['KERAS_BACKEND'] == 'tensorflow':
+        import tensorflow as tf
+
         @tf.function
         def compute_loss(label, pred, reg):
             return criterion(label, pred) + reg
@@ -114,7 +116,7 @@ if __name__ == '__main__':
         @tf.function
         def train_step(x, t, epoch):
             with tf.GradientTape() as tape:
-                preds = model(x)
+                preds = model(x, sparse=False)
                 reg = rw_schedule(epoch) * model.regularization()
                 loss = compute_loss(t, preds, reg)
 
@@ -141,18 +143,22 @@ if __name__ == '__main__':
             for batch in range(n_batches):
                 start = batch * batch_size
                 end = start + batch_size
-                train_step(_x_train[start:end], _y_train[start:end], epoch)
+                train_step(ops.convert_to_tensor(_x_train[start:end], dtype="float32"),
+                           ops.convert_to_tensor(_y_train[start:end], dtype="float32"), epoch)
 
             if epoch % 1 == 0 or epoch == epochs - 1:
-                preds = test_step(x_test, y_test)
+                preds = test_step(ops.convert_to_tensor(x_test, dtype="float32"),
+                                  ops.convert_to_tensor(y_test, dtype="float32"))
                 print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss.result():.3f}, Valid Acc: {test_acc.result():.3f}')
-                print("Sparsity: ", model.count_sparsity())
+                print("Sparsity: ", ops.convert_to_numpy(model.count_sparsity()))
 
             train_acc.reset_state()
             test_acc.reset_state()
 
 
     elif os.environ['KERAS_BACKEND'] == 'jax':
+        import jax
+
         def compute_loss(params, x, t, reg):
             preds = model_apply(params, x)
             loss = criterion(t, preds) + reg
@@ -188,19 +194,24 @@ if __name__ == '__main__':
                 start = batch * batch_size
                 end = start + batch_size
                 x_batch, y_batch = x_train[start:end], y_train[start:end]
-                model_params, optimizer_state, loss = train_step(model_params, optimizer_state, x_batch, y_batch, epoch)
+                model_params, optimizer_state, loss = train_step(model_params, optimizer_state,
+                                                                 ops.convert_to_tensor(x_batch, dtype="float32"),
+                                                                 ops.convert_to_tensor(y_batch, dtype="float32"),
+                                                                 epoch)
 
             if epoch % 1 == 0 or epoch == num_epochs - 1:
-                test_loss, preds = test_step(model_params, x_test, y_test)
-                accuracy = 1.0 - test_loss  # Assuming accuracy is the inverse of the test loss for regression tasks
-                print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss:.3f}, Valid Acc: {accuracy:.3f}')
-                print("Sparsity: ", model.count_sparsity())  # Assuming count_sparsity() is a method in your model
+                test_loss, preds = test_step(model_params, ops.convert_to_tensor(x_test, dtype="float32"),
+                                             ops.convert_to_tensor(y_test, dtype="float32"))
+                print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss:.3f}, Valid Acc: {test_acc:.3f}')
+                print("Sparsity: ", ops.convert_to_numpy(model.count_sparsity()))
 
             train_acc.reset_state()
             test_acc.reset_state()
 
 
     elif os.environ['KERAS_BACKEND'] == 'torch':
+        import torch
+
         def compute_loss(label, pred, reg):
             return criterion(label, pred) + reg
 
@@ -232,16 +243,16 @@ if __name__ == '__main__':
             for batch in range(n_batches):
                 start = batch * batch_size
                 end = start + batch_size
-                x_batch = ops.convert_to_tensor(_x_train[start:end], dtype=np.float32)
-                y_batch = ops.convert_to_tensor(_y_train[start:end], dtype=np.float32)
+                x_batch = ops.convert_to_tensor(_x_train[start:end], dtype="float32")
+                y_batch = ops.convert_to_tensor(_y_train[start:end], dtype="float32")
                 train_step(x_batch, y_batch, epoch)
 
             if epoch % 1 == 0 or epoch == epochs - 1:
-                x_test_tensor = ops.convert_to_tensor(x_test, dtype=np.float32)
-                y_test_tensor = ops.convert_to_tensor(y_test, dtype=np.float32)
+                x_test_tensor = ops.convert_to_tensor(x_test, dtype="float32")
+                y_test_tensor = ops.convert_to_tensor(y_test, dtype="float32")
                 preds = test_step(x_test_tensor, y_test_tensor)
                 print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss.result():.3f}, Valid Acc: {test_acc.result():.3f}')
-                print("Sparsity: ", model.count_sparsity())
+                print("Sparsity: ", ops.convert_to_numpy(model.count_sparsity()))
 
             train_acc.reset_state()
             test_acc.reset_state()
