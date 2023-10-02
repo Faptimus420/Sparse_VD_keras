@@ -121,7 +121,7 @@ if __name__ == '__main__':
             grads = tape.gradient(loss, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
             train_loss(loss)
-            train_acc(t, preds)
+            train_acc.update_state(t, preds)
 
             return preds
 
@@ -130,13 +130,12 @@ if __name__ == '__main__':
             preds = model(x, sparse=True)
             loss = compute_loss2(t, preds)
             test_loss(loss)
-            test_acc(t, preds)
+            test_acc.update_state(t, preds)
 
             return preds
 
 
         for epoch in range(epochs):
-
             _x_train, _y_train = shuffle(x_train, y_train, random_state=42)
 
             for batch in range(n_batches):
@@ -146,86 +145,103 @@ if __name__ == '__main__':
 
             if epoch % 1 == 0 or epoch == epochs - 1:
                 preds = test_step(x_test, y_test)
-                print('Epoch: {}, Valid Cost: {:.3f}, Valid Acc: {:.3f}'.format(
-                    epoch + 1,
-                    test_loss.result(),
-                    test_acc.result()
-                ))
+                print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss.result():.3f}, Valid Acc: {test_acc.result():.3f}')
                 print("Sparsity: ", model.count_sparsity())
 
+            train_acc.reset_state()
+            test_acc.reset_state()
+
+
     elif os.environ['KERAS_BACKEND'] == 'jax':
-        def compute_loss(trainable_variables, non_trainable_variables, metric_variables, label, reg):
-            pred, non_trainable_variables = model.stateless_call(
-                trainable_variables, non_trainable_variables, label
-            )
-            loss = criterion(label, pred) + reg
-            metric_variables = train_acc.stateless_update_state(
-                metric_variables, label, pred
-            )
-            return loss, (non_trainable_variables, metric_variables)
+        def compute_loss(params, x, t, reg):
+            preds = model_apply(params, x)
+            loss = criterion(t, preds) + reg
+            return loss
 
         grad_fn = jax.value_and_grad(compute_loss, has_aux=True)
 
-        def compute_loss2(trainable_variables, non_trainable_variables, metric_variables, label):
-            pred, non_trainable_variables = model.stateless_call(
-                trainable_variables, non_trainable_variables, label
-            )
-            loss = criterion(label, pred)
-            metric_variables = train_acc.stateless_update_state(
-                metric_variables, label, pred
-            )
-            return loss, (non_trainable_variables, metric_variables)
+        def compute_loss2(params, x, t):
+            preds = model_apply(params, x, sparse=True)
+            loss = criterion(t, preds)
+            return loss
 
         @jax.jit
-        def train_step(state, data):
-            (trainable_variables, non_trainable_variables, optimizer_variables, metric_variables) = state
-            label = data
+        def train_step(params, opt_state, x, t, epoch):
             reg = rw_schedule(epoch) * model.regularization()
-            (loss, (non_trainable_variables, metric_variables)), grads = grad_fn(
-                trainable_variables, non_trainable_variables, metric_variables, label, reg
-            )
-            trainable_variables, optimizer_variables = optimizer.stateless_apply(
-                optimizer_variables, trainable_variables, grads
-            )
-            # Return updated state
-            return loss, (
-                trainable_variables,
-                non_trainable_variables,
-                optimizer_variables,
-                metric_variables
-            )
-
+            loss, grad = grad_fn(params, x, t, reg)
+            updates, new_opt_state = optimizer.update(grad, opt_state)
+            new_params = opt_state.apply_updates(params, updates)
+            train_acc.update_state(t, preds)
+            return new_params, new_opt_state, loss
 
         @jax.jit
-        def eval_step(state, data):
-            trainable_variables, non_trainable_variables, metric_variables = state
-            label = data
-            pred, non_trainable_variables = model.stateless_call(
-                trainable_variables, non_trainable_variables, label
-            )
-            loss = compute_loss2(label, pred)
-            metric_variables = val_acc_metric.stateless_update_state(
-                metric_variables, label, pred
-            )
-            return loss, (
-                trainable_variables,
-                non_trainable_variables,
-                metric_variables,
-            )
+        def eval_step(params, x, t):
+            preds = model_apply(params, x, sparse=True)
+            loss = compute_loss2(params, x, t)
+            test_acc.update_state(t, preds)
+            return loss, preds
 
 
-        optimizer.build(model.trainable_variables)
+        for epoch in range(num_epochs):
+            x_train, y_train = shuffle(x_train, y_train, random_state=42)
+            for batch in range(n_batches):
+                start = batch * batch_size
+                end = start + batch_size
+                x_batch, y_batch = x_train[start:end], y_train[start:end]
+                model_params, optimizer_state, loss = train_step(model_params, optimizer_state, x_batch, y_batch, epoch)
 
-        trainable_variables = model.trainable_variables
-        non_trainable_variables = model.non_trainable_variables
-        optimizer_variables = optimizer.variables
-        metric_variables = train_acc.variables
-        state = (trainable_variables, non_trainable_variables, optimizer_variables, metric_variables)
+            if epoch % 1 == 0 or epoch == num_epochs - 1:
+                test_loss, preds = test_step(model_params, x_test, y_test)
+                accuracy = 1.0 - test_loss  # Assuming accuracy is the inverse of the test loss for regression tasks
+                print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss:.3f}, Valid Acc: {accuracy:.3f}')
+                print("Sparsity: ", model.count_sparsity())  # Assuming count_sparsity() is a method in your model
 
-        for step, data in enumerate(train_dataset):
-            data = (data[0].numpy(), data[1].numpy())
-            loss, state = train_step(state, data)
-            # Log every 100 batches.
-            if step % 100 == 0:
-                print(f"Training loss (for 1 batch) at step {step}: {float(loss):.4f}")
-                print(f"Seen so far: {(step + 1) * batch_size} samples")
+            train_acc.reset_state()
+            test_acc.reset_state()
+
+
+    elif os.environ['KERAS_BACKEND'] == 'torch':
+        def compute_loss(label, pred, reg):
+            return criterion(label, pred) + reg
+
+        def compute_loss2(label, pred):
+            return criterion(label, pred)
+
+        def train_step(x, t, epoch):
+            preds = model(x)
+            reg = rw_schedule(epoch) * model.regularization()
+            loss = compute_loss(t, preds, reg)
+            model.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss(loss.item())
+            train_acc.update_state(t, preds)
+            return preds
+
+        def test_step(x, t):
+            preds = model(x)
+            loss = compute_loss2(t, preds)
+            test_loss(loss.item())
+            test_acc.update_state(t, preds)
+            return preds
+
+
+        for epoch in range(epochs):
+            _x_train, _y_train = shuffle(x_train, y_train, random_state=42)
+
+            for batch in range(n_batches):
+                start = batch * batch_size
+                end = start + batch_size
+                x_batch = ops.convert_to_tensor(_x_train[start:end], dtype=np.float32)
+                y_batch = ops.convert_to_tensor(_y_train[start:end], dtype=np.float32)
+                train_step(x_batch, y_batch, epoch)
+
+            if epoch % 1 == 0 or epoch == epochs - 1:
+                x_test_tensor = ops.convert_to_tensor(x_test, dtype=np.float32)
+                y_test_tensor = ops.convert_to_tensor(y_test, dtype=np.float32)
+                preds = test_step(x_test_tensor, y_test_tensor)
+                print(f'Epoch: {epoch + 1}, Valid Cost: {test_loss.result():.3f}, Valid Acc: {test_acc.result():.3f}')
+                print("Sparsity: ", model.count_sparsity())
+
+            train_acc.reset_state()
+            test_acc.reset_state()
