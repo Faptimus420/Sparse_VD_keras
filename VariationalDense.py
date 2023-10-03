@@ -26,6 +26,7 @@ class VariationalDense(Layer):
                                         initializer=self.bias_initializer, trainable=True)
 
     def sparsity(self):
+        """Compute sparsity of the weight matrix, based on the number of non-zero elements."""
         total_param = ops.prod(ops.shape(self.boolean_mask))
         remaining_param = ops.count_nonzero(ops.cast(self.boolean_mask, dtype="uint8"))
 
@@ -33,6 +34,7 @@ class VariationalDense(Layer):
 
     @property
     def log_alpha(self):
+        """Compute log alpha, which is the log of the variance of the weight matrix."""
         theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
         log_sigma2 = ops.where(ops.isnan(self.log_sigma2), ops.zeros_like(self.log_sigma2), self.log_sigma2)
         log_alpha = ops.clip(log_sigma2 - ops.log(ops.square(theta) + 1e-10), -20.0, 4.0)
@@ -50,6 +52,7 @@ class VariationalDense(Layer):
 
     @property
     def regularization(self):
+        """Compute the regularization term for the weight matrix."""
         k1, k2, k3 = 0.63576, 1.8732, 1.48695
         C = -k1
         mdkl = k1 * ops.sigmoid(k2 + k3 * self.log_alpha) - 0.5 * ops.log(1 + (ops.exp(-self.log_alpha))) + C
@@ -57,7 +60,8 @@ class VariationalDense(Layer):
         return -ops.sum(mdkl)
 
     def call(self, input, **kwargs):
-        if not kwargs['sparse']:
+        """Forward pass of the layer - differentiates between sparse (on evaluation time) and dense (on training time) input."""
+        if not kwargs['sparse_input']:
             theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
             sigma = ops.sqrt(ops.exp(self.log_alpha) * theta * theta)
             self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0) * sigma
@@ -99,7 +103,7 @@ class VariationalDense(Layer):
 
 if __name__ == '__main__':
     a = VariationalDense(10)
-    print(a(model(ops.zeros((1, 1)), sparse=True)))
+    print(a(model(ops.zeros((1, 1)), sparse_input=True)))
     print(a.regularization)
 
 
