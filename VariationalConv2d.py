@@ -1,6 +1,8 @@
 from keras_core import activations, initializers, regularizers, ops, random
 from keras_core.layers import Layer
+from keras_core import saving
 
+@saving.register_keras_serializable(package="VariationalDropoutAutoencoder")
 class VariationalConv2d(Layer):
     def __init__(self, kernel_size, stride, padding='SAME', threshold=3.0, activation=None, data_format='channels_last', kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None):
         super(VariationalConv2d, self).__init__()
