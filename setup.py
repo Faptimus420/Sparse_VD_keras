@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='sparse-vd-keras',
@@ -6,7 +6,7 @@ setup(
     description='Sparse Variational Dropout layers for Keras Core/3.0',
     url='https://github.com/Faptimus420/Sparse_VD_keras-core',
     author='Patrik Zori',
-    packages=['sparse_vd_keras/'],
+    packages=find_packages(exclude=['LeNet.py']),
     install_requires=['keras_core>=0.1.7'],
-    py_modules=['VariationalConv2d', 'VariationalDense']
+    python_requires='>=3.9',
 )
