@@ -1,12 +1,12 @@
-import os
+import os, importlib
 #os.environ['KERAS_BACKEND'] = 'tensorflow'
 os.environ['KERAS_BACKEND'] = 'jax'
 #os.environ['KERAS_BACKEND'] = 'torch'
 
 import numpy as np
 
-from src.sparse_vd_keras import VariationalDense
-from src.sparse_vd_keras import VariationalConv2d
+from sparse_vd_keras.src.sparse_vd_keras.VariationalDense import VariationalDense
+from sparse_vd_keras.src.sparse_vd_keras.VariationalConv2d import VariationalConv2d
 from sklearn.utils import shuffle
 
 from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics
