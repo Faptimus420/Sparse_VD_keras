@@ -5,8 +5,8 @@ os.environ['KERAS_BACKEND'] = 'jax'
 
 import numpy as np
 
-from src import VariationalDense
-from src import VariationalConv2d
+from src.sparse_vd_keras import VariationalDense
+from src.sparse_vd_keras import VariationalConv2d
 from sklearn.utils import shuffle
 
 from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics
