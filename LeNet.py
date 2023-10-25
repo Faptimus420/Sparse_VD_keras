@@ -5,8 +5,8 @@ os.environ['KERAS_BACKEND'] = 'jax'
 
 import numpy as np
 
-from VariationalDense import VariationalDense
-from VariationalConv2d import VariationalConv2d
+from src.VariationalDense import VariationalDense
+from src.VariationalConv2d import VariationalConv2d
 from sklearn.utils import shuffle
 
 from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics
@@ -170,10 +170,12 @@ if __name__ == '__main__':
         def compute_loss2(label, pred):
             return criterion(label, pred)
 
-        def compute_loss_and_updates(trainable_variables, non_trainable_variables, metric_variables, x, t, epoch):
+        def compute_loss_and_updates(trainable_variables, non_trainable_variables, metric_variables, x, t, epoch,
+                                     training=False):
             reg = rw_schedule(epoch) * model.regularization()
+
             preds, non_trainable_variables = model.stateless_call(trainable_variables, non_trainable_variables, x,
-                                                                  train=True, sparse_input=False)
+                                                                  train=training, sparse_input=False)
 
             loss = compute_loss(t, preds, reg)
             metric_variables = train_acc.stateless_update_state(metric_variables, t, preds)
@@ -194,7 +196,7 @@ if __name__ == '__main__':
             (loss, (non_trainable_variables, metric_variables)), grads = grad_fn(trainable_variables,
                                                                                  non_trainable_variables,
                                                                                  metric_variables,
-                                                                                 x, t, epoch)
+                                                                                 x, t, epoch, True)
 
             trainable_variables, optimizer_variables = optimizer.stateless_apply(optimizer_variables, grads,
                                                                                  trainable_variables)
