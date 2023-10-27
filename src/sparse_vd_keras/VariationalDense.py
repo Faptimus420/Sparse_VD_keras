@@ -27,6 +27,11 @@ class VariationalDense(Layer):
             self.bias = self.add_weight(name="bias", shape=(self.output_dim,),
                                         initializer=self.bias_initializer, trainable=True)
 
+    def compute_output_shape(self, input_shape):
+        output_shape = list(input_shape)
+        output_shape[-1] = self.output_dim
+        return tuple(output_shape)
+
     def sparsity(self):
         """Compute sparsity of the weight matrix, based on the number of non-zero elements."""
         total_param = ops.prod(ops.shape(self.boolean_mask))
