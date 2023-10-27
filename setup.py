@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sparse-vd-keras',
-    version='1.0',
+    version='1.1',
     description='Sparse Variational Dropout layers for Keras Core/3.0',
     url='https://github.com/Faptimus420/Sparse_VD_keras-core',
     author='Cerphilly and Patrik Zori',
