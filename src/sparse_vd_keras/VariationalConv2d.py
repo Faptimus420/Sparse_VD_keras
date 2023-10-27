@@ -26,6 +26,17 @@ class VariationalConv2d(Layer):
         self.log_sigma2 = self.add_weight(name="log_sigma2", shape=self.kernel_size,
                                  initializer=initializers.Constant(-10.0), trainable=True)
 
+    def compute_output_shape(self, input_shape):
+        return ops.operation_utils.compute_conv_output_shape(
+            input_shape,
+            self.kernel_size[-1],
+            self.kernel_size,
+            strides=self.stride,
+            padding=self.padding.lower(),
+            data_format=self.data_format,
+            dilation_rate=None,
+        )
+
     def sparsity(self):
         """Compute sparsity of the weight matrix, based on the number of non-zero elements."""
         total_param = ops.prod(ops.shape(self.boolean_mask))
