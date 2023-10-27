@@ -1,4 +1,4 @@
-import os, importlib
+import os
 #os.environ['KERAS_BACKEND'] = 'tensorflow'
 #os.environ['KERAS_BACKEND'] = 'jax'
 os.environ['KERAS_BACKEND'] = 'torch'
@@ -9,7 +9,7 @@ from src.sparse_vd_keras.VariationalDense import VariationalDense
 from src.sparse_vd_keras.VariationalConv2d import VariationalConv2d
 from sklearn.utils import shuffle
 
-from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics
+from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics, Variable
 from keras_core.layers import MaxPooling2D, Flatten
 
 def rw_schedule(epoch):
@@ -37,6 +37,8 @@ class VariationalLeNet(Model):
 
         self.hidden_layers = [self.conv1, self.conv2, self.fc1, self.fc2, self.fc3]
 
+        self.epoch = Variable(initiliazer=0, dtype='int32', trainable=False)
+
     def call(self, input, **kwargs):
         x = self.conv1(input, sparse_input=kwargs['sparse_input'])
         x = ops.relu(x)
@@ -50,7 +52,14 @@ class VariationalLeNet(Model):
         x = self.fc2(x, sparse_input=kwargs['sparse_input'])
         x = ops.relu(x)
         x = self.fc3(x, sparse_input=kwargs['sparse_input'])
-        return ops.softmax(x)
+        x = ops.softmax(x)
+        self.epoch.assign_add(1)
+        return x
+
+    def build(self, input_shape):
+        for layer in self.hidden_layers:
+            layer.build(input_shape)
+            input_shape = layer.compute_output_shape(input_shape)
 
     def regularization(self):
         """Computes the total regularization term that has been applied on all the layers."""
@@ -117,10 +126,10 @@ if __name__ == '__main__':
             return criterion(label, pred)
 
         @tf.function
-        def train_step(x, t, epoch):
+        def train_step(x, t):
             with tf.GradientTape() as tape:
                 preds = model(x, train=True, sparse_input=False)
-                reg = rw_schedule(epoch) * model.regularization()
+                reg = rw_schedule(model.epoch.value) * model.regularization()
                 loss = compute_loss(t, preds, reg)
 
             grads = tape.gradient(loss, model.trainable_variables)
@@ -147,7 +156,7 @@ if __name__ == '__main__':
                 start = batch * batch_size
                 end = start + batch_size
                 train_step(ops.convert_to_tensor(_x_train[start:end], dtype="float32"),
-                           ops.convert_to_tensor(_y_train[start:end], dtype="float32"), epoch)
+                           ops.convert_to_tensor(_y_train[start:end], dtype="float32"))
 
             # Epoch valiation
             preds = test_step(ops.convert_to_tensor(x_test, dtype="float32"),
@@ -162,7 +171,6 @@ if __name__ == '__main__':
         AttributeError: 'VariationalConv2d' object has no attribute 'theta'"""
 
         import jax
-        from functools import partial
 
         def compute_loss(t, preds, reg):
             return criterion(t, preds) + reg
@@ -183,8 +191,8 @@ if __name__ == '__main__':
 
         grad_fn = jax.value_and_grad(compute_loss_and_updates, has_aux=True)
 
-        @partial(jax.jit, static_argnames=['epoch'])
-        def train_step(state, data, epoch):
+        @jax.jit
+        def train_step(state, data):
             (
                 trainable_variables,
                 non_trainable_variables,
@@ -196,7 +204,7 @@ if __name__ == '__main__':
             (loss, (non_trainable_variables, metric_variables)), grads = grad_fn(trainable_variables,
                                                                                  non_trainable_variables,
                                                                                  metric_variables,
-                                                                                 x, t, epoch, True)
+                                                                                 x, t, model.epoch.value, True)
 
             trainable_variables, optimizer_variables = optimizer.stateless_apply(optimizer_variables, grads,
                                                                                  trainable_variables)
@@ -229,6 +237,7 @@ if __name__ == '__main__':
 
 
         # Initialization
+        model.build(x_train.shape[0:1])
         optimizer.build(model.trainable_variables)
         trainable_variables = model.trainable_variables
         non_trainable_variables = model.non_trainable_variables
@@ -250,8 +259,7 @@ if __name__ == '__main__':
                 x_batch, y_batch = x_train[start:end], y_train[start:end]
                 loss, state = train_step(state,
                                          (ops.convert_to_tensor(x_batch, dtype="float32"),
-                                          ops.convert_to_tensor(y_batch, dtype="float32")),
-                                         epoch)
+                                          ops.convert_to_tensor(y_batch, dtype="float32")))
 
             loss, state = eval_step(state,
                                     (ops.convert_to_tensor(x_test, dtype="float32"),
@@ -272,9 +280,9 @@ if __name__ == '__main__':
         def compute_loss2(label, pred):
             return criterion(label, pred)
 
-        def train_step(x, t, epoch):
+        def train_step(x, t):
             preds = model(x, train=True, sparse_input=False)
-            reg = rw_schedule(epoch) * model.regularization()
+            reg = rw_schedule(model.epoch.value) * model.regularization()
             loss = compute_loss(t, preds, reg)
 
             model.zero_grad()
@@ -307,7 +315,7 @@ if __name__ == '__main__':
                 end = start + batch_size
                 x_batch = ops.convert_to_tensor(_x_train[start:end], dtype="float32")
                 y_batch = ops.convert_to_tensor(_y_train[start:end], dtype="float32")
-                train_step(x_batch, y_batch, epoch)
+                train_step(x_batch, y_batch)
 
             x_test_tensor = ops.convert_to_tensor(x_test, dtype="float32")
             y_test_tensor = ops.convert_to_tensor(y_test, dtype="float32")
