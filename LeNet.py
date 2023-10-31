@@ -1,7 +1,7 @@
 import os
 #os.environ['KERAS_BACKEND'] = 'tensorflow'
-#os.environ['KERAS_BACKEND'] = 'jax'
-os.environ['KERAS_BACKEND'] = 'torch'
+os.environ['KERAS_BACKEND'] = 'jax'
+#os.environ['KERAS_BACKEND'] = 'torch'
 
 import numpy as np
 
@@ -14,10 +14,7 @@ from keras_core.layers import MaxPooling2D, Flatten
 
 def rw_schedule(epoch):
     """Defines the schedule for the weight regularization term."""
-    if epoch <= 1:
-        return 0
-    else:
-        return 0.0001 * (epoch - 1)
+    return ops.where(epoch <= 1.0, 0.0, 0.0001 * (epoch - 1.0))
 
 
 class VariationalLeNet(Model):
@@ -25,19 +22,19 @@ class VariationalLeNet(Model):
         super().__init__()
         self.n_class = n_class
 
-        self.conv1 = VariationalConv2d((5, 5, 1, 6), stride=1, padding='VALID')
-        self.pooling1 = MaxPooling2D(padding='SAME')
-        self.conv2 = VariationalConv2d((5, 5, 6, 16), stride=1, padding='VALID')
-        self.pooling2 = MaxPooling2D(padding='SAME')
+        self.conv1 = VariationalConv2d((5, 5, 1, 6), stride=1, padding='valid')
+        self.pooling1 = MaxPooling2D(padding='same')
+        self.conv2 = VariationalConv2d((5, 5, 6, 16), stride=1, padding='valid')
+        self.pooling2 = MaxPooling2D(padding='same')
 
         self.flat = Flatten()
         self.fc1 = VariationalDense(120)
         self.fc2 = VariationalDense(84)
         self.fc3 = VariationalDense(10)
 
-        self.hidden_layers = [self.conv1, self.conv2, self.fc1, self.fc2, self.fc3]
+        self.hidden_layers = [self.conv1, self.pooling1, self.conv2, self.pooling2, self.flat, self.fc1, self.fc2, self.fc3]
 
-        self.epoch = Variable(initiliazer=0, dtype='int32', trainable=False)
+        self.epoch = Variable(initializer=0.0, dtype='float32', trainable=False)
 
     def call(self, input, **kwargs):
         x = self.conv1(input, sparse_input=kwargs['sparse_input'])
@@ -53,7 +50,7 @@ class VariationalLeNet(Model):
         x = ops.relu(x)
         x = self.fc3(x, sparse_input=kwargs['sparse_input'])
         x = ops.softmax(x)
-        self.epoch.assign_add(1)
+        self.epoch.assign_add(1.0)
         return x
 
     def build(self, input_shape):
@@ -65,7 +62,10 @@ class VariationalLeNet(Model):
         """Computes the total regularization term that has been applied on all the layers."""
         total_reg = 0
         for layer in self.hidden_layers:
-            total_reg += layer.regularization
+            try:
+                total_reg += layer.regularization
+            except AttributeError:
+                continue
 
         return total_reg
 
@@ -73,7 +73,10 @@ class VariationalLeNet(Model):
         """Computes the sparsity of the weight matrices in all the layers."""
         total_remain, total_param = 0, 0
         for layer in self.hidden_layers:
-            a, b = layer.sparsity()
+            try:
+                a, b = layer.sparsity()
+            except AttributeError:
+                continue
             total_remain += a
             total_param += b
 
@@ -166,9 +169,6 @@ if __name__ == '__main__':
 
 
     elif os.environ['KERAS_BACKEND'] == 'jax':
-        """Note: The JAX backend is not working - the custom layers do not seem to be getting built properly when using
-        the JAX backend, causing them to not have the 'theta' attribute initialized, causing
-        AttributeError: 'VariationalConv2d' object has no attribute 'theta'"""
 
         import jax
 
@@ -219,7 +219,7 @@ if __name__ == '__main__':
 
         @jax.jit
         def eval_step(state, data):
-            trainable_variables, non_trainable_variables, metric_variables = state
+            trainable_variables, non_trainable_variables, optimizer_variables, metric_variables = state
             x, t = data
 
             preds, non_trainable_variables = model.stateless_call(trainable_variables, non_trainable_variables,
@@ -232,12 +232,13 @@ if __name__ == '__main__':
             return loss, (
                 trainable_variables,
                 non_trainable_variables,
+                optimizer_variables,
                 metric_variables,
             )
 
 
         # Initialization
-        model.build(x_train.shape[0:1])
+        model.build(x_train.shape)
         optimizer.build(model.trainable_variables)
         trainable_variables = model.trainable_variables
         non_trainable_variables = model.non_trainable_variables

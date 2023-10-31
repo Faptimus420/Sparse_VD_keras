@@ -16,6 +16,8 @@ class VariationalDense(Layer):
 
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
 
+        self.seed_generator = random.SeedGenerator()
+
     def build(self, input_shape):
         self.theta = self.add_weight(name="kernel", shape=(int(input_shape[-1]), self.output_dim),
                                      initializer=self.kernel_initializer, trainable=True, regularizer=self.kernel_regularizer)
@@ -34,7 +36,7 @@ class VariationalDense(Layer):
 
     def sparsity(self):
         """Compute sparsity of the weight matrix, based on the number of non-zero elements."""
-        total_param = ops.prod(ops.shape(self.boolean_mask))
+        total_param = ops.prod(ops.array(ops.shape(self.boolean_mask)))
         remaining_param = ops.count_nonzero(ops.cast(self.boolean_mask, dtype="uint8"))
 
         return remaining_param, total_param
@@ -42,8 +44,8 @@ class VariationalDense(Layer):
     @property
     def log_alpha(self):
         """Compute log alpha, which is the log of the variance of the weight matrix."""
-        theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
-        log_sigma2 = ops.where(ops.isnan(self.log_sigma2), ops.zeros_like(self.log_sigma2), self.log_sigma2)
+        theta = ops.where(ops.isnan(self.theta.value), ops.zeros_like(self.theta.value), self.theta.value)
+        log_sigma2 = ops.where(ops.isnan(self.log_sigma2.value), ops.zeros_like(self.log_sigma2.value), self.log_sigma2.value)
         log_alpha = ops.clip(log_sigma2 - ops.log(ops.square(theta) + 1e-10), -20.0, 4.0)
         return ops.where(ops.isnan(log_alpha), self.threshold * ops.ones_like(log_alpha), log_alpha)
 
@@ -54,7 +56,7 @@ class VariationalDense(Layer):
 
     @property
     def sparse_theta(self):
-        theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
+        theta = ops.where(ops.isnan(self.theta.value), ops.zeros_like(self.theta.value), self.theta.value)
         return ops.where(self.boolean_mask, theta, ops.zeros_like(theta))
 
     @property
@@ -69,9 +71,9 @@ class VariationalDense(Layer):
     def call(self, input, **kwargs):
         """Forward pass of the layer - differentiates between sparse (on evaluation time) and dense (on training time) input."""
         if not kwargs['sparse_input']:
-            theta = ops.where(ops.isnan(self.theta), ops.zeros_like(self.theta), self.theta)
+            theta = ops.where(ops.isnan(self.theta.value), ops.zeros_like(self.theta.value), self.theta.value)
             sigma = ops.sqrt(ops.exp(self.log_alpha) * theta * theta)
-            self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0) * sigma
+            self.weight = theta + random.normal(ops.shape(theta), 0.0, 1.0, seed=self.seed_generator) * sigma
             output = ops.matmul(input, self.weight)
             if self.use_bias == True:
                 output += self.bias
