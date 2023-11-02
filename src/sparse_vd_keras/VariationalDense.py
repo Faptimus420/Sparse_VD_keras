@@ -2,7 +2,7 @@ from keras_core import activations, initializers, regularizers, ops, random
 from keras_core.layers import Layer
 from keras_core import saving
 
-@saving.register_keras_serializable(package="VariationalDropoutAutoencoder")
+@saving.register_keras_serializable(package="VariationalDropoutAutoencoder", name="VariationalDense")
 class VariationalDense(Layer):
     def __init__(self, output_dim, use_bias=True, threshold=3.0, activation=None, kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None):
         super(VariationalDense, self).__init__()
@@ -112,7 +112,7 @@ class VariationalDense(Layer):
 
 if __name__ == '__main__':
     a = VariationalDense(10)
-    print(a(model(ops.zeros((1, 1)), sparse_input=True)))
+    print(a(ops.zeros((1, 1)), sparse_input=True))
     print(a.regularization)
 
 
