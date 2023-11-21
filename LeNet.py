@@ -58,6 +58,7 @@ class VariationalLeNet(Model):
             layer.build(input_shape)
             input_shape = layer.compute_output_shape(input_shape)
 
+    @property
     def regularization(self):
         """Computes the total regularization term that has been applied on all the layers."""
         total_reg = 0
@@ -69,6 +70,7 @@ class VariationalLeNet(Model):
 
         return total_reg
 
+    @property
     def count_sparsity(self):
         """Computes the sparsity of the weight matrices in all the layers."""
         total_remain, total_param = 0, 0

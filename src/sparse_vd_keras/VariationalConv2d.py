@@ -85,8 +85,8 @@ def compute_conv_output_shape(
 
 @saving.register_keras_serializable(package="VariationalDropoutAutoencoder", name="VariationalConv2d")
 class VariationalConv2d(Layer):
-    def __init__(self, kernel_size, stride, padding='same', threshold=3.0, activation=None, data_format='channels_last', kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None):
-        super(VariationalConv2d, self).__init__()
+    def __init__(self, kernel_size, stride, padding='same', threshold=3.0, activation=None, data_format='channels_last', kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None, **kwargs):
+        super(VariationalConv2d, self).__init__(**kwargs)
         assert len(kernel_size) == 4    #kernel_size: [filter_height, filter_width, in_channels, out_channels]
         self.kernel_size = kernel_size
         self.stride = stride

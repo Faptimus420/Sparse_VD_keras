@@ -4,8 +4,8 @@ from keras_core import saving
 
 @saving.register_keras_serializable(package="VariationalDropoutAutoencoder", name="VariationalDense")
 class VariationalDense(Layer):
-    def __init__(self, output_dim, use_bias=True, threshold=3.0, activation=None, kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None):
-        super(VariationalDense, self).__init__()
+    def __init__(self, output_dim, use_bias=True, threshold=3.0, activation=None, kernel_initializer='glorot_normal', bias_initializer='zeros', kernel_regularizer=None, **kwargs):
+        super(VariationalDense, self).__init__(**kwargs)
         self.output_dim = output_dim
         self.use_bias = use_bias
         self.threshold = threshold
