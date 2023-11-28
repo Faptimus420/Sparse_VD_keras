@@ -9,8 +9,8 @@ from src.sparse_vd_keras.VariationalDense import VariationalDense
 from src.sparse_vd_keras.VariationalConv2d import VariationalConv2d
 from sklearn.utils import shuffle
 
-from keras_core import Model, ops, utils, datasets, losses, optimizers, metrics, Variable
-from keras_core.layers import MaxPooling2D, Flatten
+from keras import Model, ops, utils, datasets, losses, optimizers, metrics, Variable
+from keras.layers import MaxPooling2D, Flatten
 
 def rw_schedule(epoch):
     """Defines the schedule for the weight regularization term."""

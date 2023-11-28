@@ -1,1 +1,1 @@
-keras-core>=0.1.7
+keras>=3.0

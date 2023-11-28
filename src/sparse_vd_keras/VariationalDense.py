@@ -1,6 +1,6 @@
-from keras_core import activations, initializers, regularizers, ops, random
-from keras_core.layers import Layer
-from keras_core import saving
+from keras import activations, initializers, regularizers, ops, random
+from keras.layers import Layer
+from keras import saving
 
 @saving.register_keras_serializable(package="VariationalDropoutAutoencoder", name="VariationalDense")
 class VariationalDense(Layer):
